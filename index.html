@@ -3,23 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>یاری ئۆنلاینی کوردی</title>
+    <title>یاری ناوەبژێو 🎮</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     <style>
-        body { margin: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .box { text-align: center; padding: 30px; border: 2px solid #f5c518; border-radius: 20px; background: #222; width: 300px; }
-        input { width: 90%; padding: 10px; margin: 10px 0; border-radius: 8px; border: none; }
-        button { background: #f5c518; color: black; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
-        .p-card { background: #333; padding: 10px; margin: 5px 0; border-radius: 10px; border-right: 4px solid #f5c518; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600;700;900&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Noto Naskh Arabic',serif;background:#07080f;color:#eef0ff;min-height:100vh;direction:rtl;overflow-x:hidden;}
+        body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+            background:radial-gradient(ellipse 70% 50% at 15% 15%,rgba(167,139,250,.08) 0%,transparent 65%),
+                       radial-gradient(ellipse 60% 60% at 85% 85%,rgba(245,197,24,.06) 0%,transparent 65%);}
+        .container{position:relative;zIndex:1;maxWidth:600px;margin:0 auto;padding:20px;}
+        .card{background:#0e1020;border:1px solid #252a42;border-radius:16px;padding:22px;margin-bottom:16px;box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+        input{width:100%;background:#161929;border:1px solid #252a42;border-radius:10px;padding:12px;color:#eef0ff;margin-bottom:15px;outline:none;font-size:16px;}
+        button{cursor:pointer; transition: 0.2s; border:none; font-family:'Noto Naskh Arabic';}
+        .btn-gold{background:linear-gradient(135deg,#f5c518,#e8963a);color:#09090f;font-weight:bold;padding:12px;border-radius:10px;width:100%;font-size:16px;}
+        .btn-ghost{background:#161929;color:#eef0ff;border:1px solid #252a42;padding:10px;border-radius:10px;width:100%;margin-top:8px;}
+        .letter-big{font-size:6rem;font-weight:900;text-align:center;color:#f5c518;margin:10px 0;}
+        .player-tag{background:#161929;border:1px solid #252a42;padding:5px 15px;border-radius:20px;margin:5px;display:inline-block;}
+        .timer{font-size:1.5rem;font-weight:bold;color:#f5c518;text-align:center;margin-bottom:10px;}
     </style>
 </head>
 <body>
     <div id="root"></div>
+
     <script type="text/babel">
+        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyClW8-RvknN9aQ63eXm7ziH9PoC",
             authDomain: "kurdish-game-5206a.firebaseapp.com",
@@ -32,44 +44,128 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        function App() {
-            const [room, setRoom] = React.useState('');
-            const [name, setName] = React.useState('');
-            const [joined, setJoined] = React.useState(false);
-            const [players, setPlayers] = React.useState({});
+        const KU = ["ئ","ب","پ","ت","ج","چ","ح","خ","د","ر","ز","ژ","س","ش","ع","غ","ف","ق","ک","گ","ل","م","ن","و","ه","ی"];
+        const DEF_CATS = ["ناوی مروف","ناوی گیانەوەر","ناوی خواردن","ناوی میوە","ناوی شار","ناوی سەیارە"];
 
+        function App() {
+            const [screen, setScreen] = React.useState('lobby');
+            const [name, setName] = React.useState('');
+            const [code, setCode] = React.useState('');
+            const [room, setRoom] = React.useState(null);
+            const [answers, setAnswers] = React.useState({});
+            const [timer, setTimer] = React.useState(0);
+
+            // Listen to Room Changes
             React.useEffect(() => {
-                if (joined && room) {
-                    db.ref('rooms/' + room + '/players').on('value', (s) => {
-                        if (s.val()) setPlayers(s.val());
+                if (code) {
+                    const roomRef = db.ref('rooms/' + code);
+                    roomRef.on('value', (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            setRoom(data);
+                            if (data.phase === 'playing' && screen !== 'playing') setScreen('playing');
+                            if (data.phase === 'lobby' && screen === 'setup') setScreen('waiting');
+                        }
                     });
                 }
-            }, [joined, room]);
+            }, [code]);
 
-            const join = () => {
-                if (name && room) {
-                    db.ref(`rooms/${room}/players/${name}`).set({ name });
-                    setJoined(true);
-                }
+            const createRoom = () => {
+                const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+                if (!name) return alert("ناوت بنووسە");
+                const initialRoom = {
+                    code: newCode,
+                    admin: name,
+                    players: { [name]: { name, score: 0 } },
+                    phase: 'lobby',
+                    letter: KU[Math.floor(Math.random() * KU.length)],
+                    cats: DEF_CATS
+                };
+                db.ref('rooms/' + newCode).set(initialRoom);
+                setCode(newCode);
+                setScreen('waiting');
             };
 
-            if (!joined) return (
-                <div className="box">
-                    <h2 style={{color: '#f5c518'}}>بەخێربێیت 🎮</h2>
-                    <input placeholder="ناوت" onChange={e => setName(e.target.value)} />
-                    <input placeholder="کۆدی ژوور" onChange={e => setRoom(e.target.value)} />
-                    <button onClick={join}>دەستپێکردن</button>
+            const joinRoom = () => {
+                if (!name || !code) return alert("ناو و کۆد بنووسە");
+                db.ref('rooms/' + code + '/players/' + name).set({ name, score: 0 });
+                setScreen('waiting');
+            };
+
+            const startMatch = () => {
+                db.ref('rooms/' + code).update({ phase: 'playing' });
+            };
+
+            const submitAnswers = () => {
+                db.ref('rooms/' + code + '/answers/' + name).set(answers);
+                alert("وەڵامەکان نێردران! چاوەڕێی ئەوانی تر بکە");
+            };
+
+            if (screen === 'lobby') return (
+                <div className="container">
+                    <div className="card" style={{textAlign:'center'}}>
+                        <h1 style={{color:'#f5c518', fontSize:'2.5rem', marginBottom:'20px'}}>🎮 یاریا ناڤا</h1>
+                        <input placeholder="ناوت بنووسە" onChange={e => setName(e.target.value)} />
+                        <button className="btn-gold" onClick={() => setScreen('setup')}>👑 دروستکردنی ژوور</button>
+                        <button className="btn-ghost" onClick={() => setScreen('join')}>🎮 بەشداری کردن</button>
+                    </div>
                 </div>
             );
 
-            return (
-                <div className="box">
-                    <h3 style={{color: '#f5c518'}}>ژووری: {room}</h3>
-                    {Object.values(players).map((p, i) => <div key={i} className="p-card">{p.name} ✅</div>)}
+            if (screen === 'setup' || screen === 'join') return (
+                <div className="container">
+                    <div className="card">
+                        <h2>{screen === 'setup' ? 'دروستکردنی ژوور' : 'بەشداری لە ژوور'}</h2>
+                        <input placeholder="ناوت بنووسە" onChange={e => setName(e.target.value)} />
+                        {screen === 'join' && <input placeholder="کۆدی ژوور (6 ژمارە)" onChange={e => setCode(e.target.value)} />}
+                        <button className="btn-gold" onClick={screen === 'setup' ? createRoom : joinRoom}>
+                            {screen === 'setup' ? 'دروستکردن' : 'بەشداری'}
+                        </button>
+                        <button className="btn-ghost" onClick={() => setScreen('lobby')}>گەڕانەوە</button>
+                    </div>
                 </div>
             );
+
+            if (screen === 'waiting') return (
+                <div className="container">
+                    <div className="card" style={{textAlign:'center'}}>
+                        <p style={{color:'#6b7094'}}>کۆدی ژوور بۆ هاوڕێکانت:</p>
+                        <h1 style={{color:'#f5c518', fontSize:'3rem', letterSpacing:'10px'}}>{code}</h1>
+                        <div style={{margin:'20px 0'}}>
+                            <p>یاریزانە ئامادەبووەکان:</p>
+                            {room && room.players && Object.values(room.players).map(p => (
+                                <span key={p.name} className="player-tag">{p.name} ✅</span>
+                            ))}
+                        </div>
+                        {room && room.admin === name && (
+                            <button className="btn-gold" onClick={startMatch}>▶️ دەستپێکردنی گەمە</button>
+                        )}
+                        <p style={{marginTop:'15px', color:'#6b7094'}}>چاوەڕێی ئەدمین بکە...</p>
+                    </div>
+                </div>
+            );if (screen === 'playing') return (
+                <div className="container">
+                    <div className="card">
+                        <div style={{textAlign:'center'}}>
+                            <p>پیتەکە:</p>
+                            <h1 className="letter-big">{room?.letter}</h1>
+                        </div>
+                        {DEF_CATS.map(cat => (
+                            <div key={cat}>
+                                <label style={{fontSize:'14px', color:'#f5c518'}}>{cat}</label>
+                                <input placeholder={room?.letter + "..."} onChange={e => setAnswers({...answers, [cat]: e.target.value})} />
+                            </div>
+                        ))}
+                        <button className="btn-gold" onClick={submitAnswers}>✅ ناردنی وەڵامەکان</button>
+                    </div>
+                </div>
+            );
+
+            return null;
         }
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
